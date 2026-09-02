@@ -15,8 +15,8 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { readRows, needsPassword, wrongPassword } from "./src/pdf.mjs";
 import { openWithPassword } from "./src/ask.mjs";
-import { parse, formatExact } from "./src/parse.mjs";
-import { analyse } from "./src/analyse.mjs";
+import { parse, formatExact } from "./src/lib/parse.mjs";
+import { analyse } from "./src/lib/analyse.mjs";
 import { categorise, estimateCostInr } from "./src/categorise.mjs";
 
 const FILE = process.argv[2] ?? "./statement.pdf";

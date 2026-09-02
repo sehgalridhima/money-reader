@@ -1,7 +1,14 @@
 node_modules
-*.pdf
+.next
+
+# Your data. None of this belongs in the repository.
+statement.pdf
+*.statement.pdf
 rows.txt
 report.json
 categories.json
 last-run.log
 .env*
+
+# The sample is synthetic and deliberately committed.
+!public/sample-statement.pdf

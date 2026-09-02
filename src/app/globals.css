@@ -1,0 +1,39 @@
+@import "tailwindcss";
+
+@theme {
+  --color-page: #fbfaf8;
+  --color-surface: #ffffff;
+  --color-surface-2: #f3f1ee;
+  --color-ink: #1c1a17;
+  --color-muted: #6f6a63;
+  --color-border: #e5e1db;
+  --color-accent: #1f6f5c;
+  --color-accent-soft: #e6f1ed;
+  --color-warn: #8a5a1c;
+  --color-warn-soft: #fdf3e3;
+  --color-spend: #a8452f;
+  --color-earn: #1f6f5c;
+}
+
+@media (prefers-color-scheme: dark) {
+  @theme {
+    --color-page: #14130f;
+    --color-surface: #1c1a17;
+    --color-surface-2: #24211d;
+    --color-ink: #f2efe9;
+    --color-muted: #a09a91;
+    --color-border: #302c27;
+    --color-accent: #6dc0a6;
+    --color-accent-soft: #1b2f29;
+    --color-warn: #d9a960;
+    --color-warn-soft: #2c2418;
+    --color-spend: #e08b76;
+    --color-earn: #6dc0a6;
+  }
+}
+
+/* Money is compared down a column far more often than it is read as
+   prose, so the digits have to line up. */
+.tabular {
+  font-variant-numeric: tabular-nums;
+}

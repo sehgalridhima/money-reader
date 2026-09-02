@@ -4,8 +4,11 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "start": "node --env-file-if-exists=.env.local report.mjs",
-    "inspect": "node inspect.mjs"
+    "inspect": "node inspect.mjs",
+    "dev": "next dev",
+    "build": "next build",
+    "web": "next start",
+    "cli": "node --env-file-if-exists=.env.local report.mjs"
   },
   "keywords": [],
   "author": "",
@@ -13,6 +16,17 @@
   "type": "module",
   "dependencies": {
     "@anthropic-ai/sdk": "^0.123.0",
-    "pdfjs-dist": "^6.3.289"
+    "next": "^16.3.4",
+    "pdfjs-dist": "^6.3.289",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.3.3",
+    "@types/node": "^26.4.1",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.5",
+    "tailwindcss": "^4.3.3",
+    "typescript": "^7.0.2"
   }
 }

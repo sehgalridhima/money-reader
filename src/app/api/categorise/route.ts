@@ -1,0 +1,203 @@
+/* ===============================================================
+   THE ONLY ENDPOINT
+   ===============================================================
+   The whole server side of this app is one route that takes a list
+   of payee names and returns a label for each.
+
+   It cannot receive a statement, because nothing sends it one. It
+   cannot receive an amount, a date, a balance or an account number,
+   because the schema below rejects anything that is not a short
+   string and the browser has no code that would send them. That is
+   worth stating as a property of the design rather than a promise:
+   there is no upload endpoint to misuse.
+   =============================================================== */
+
+import { NextResponse } from "next/server";
+import Anthropic from "@anthropic-ai/sdk";
+import { CATEGORIES } from "@/lib/known-merchants.mjs";
+
+/** A statement with more unfamiliar payees than this is unusual. */
+const MAX_NAMES = 40;
+
+/** Long enough for any real merchant, short enough to be a name. */
+const MAX_NAME_LENGTH = 60;
+
+/*
+ * Rate limiting, and an honest description of what it is worth. This
+ * is a Map in module scope, so each serverless instance keeps its
+ * own and the real ceiling is however many instances exist — a brake
+ * rather than a wall. It is here to stop one person looping, not to
+ * be the thing that protects the account.
+ *
+ * The actual wall is the Anthropic balance with auto-reload off:
+ * spending cannot exceed what has been paid for. A limit that can be
+ * bypassed by opening a second tab is not a spending control, and
+ * calling it one would be the kind of quiet inaccuracy this project
+ * exists to avoid.
+ */
+const WINDOW_MS = 60 * 60 * 1000;
+const PER_VISITOR = 12;
+const visits = new Map<string, number[]>();
+
+function overLimit(key: string): boolean {
+  const now = Date.now();
+  const recent = (visits.get(key) ?? []).filter((t) => now - t < WINDOW_MS);
+  visits.set(key, recent);
+  if (recent.length >= PER_VISITOR) return true;
+  recent.push(now);
+  return false;
+}
+
+const SCHEMA = {
+  type: "object",
+  properties: {
+    merchants: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          name: { type: "string" },
+          category: { type: "string", enum: CATEGORIES },
+          sure: { type: "boolean" },
+        },
+        required: ["name", "category", "sure"],
+        additionalProperties: false,
+      },
+    },
+  },
+  required: ["merchants"],
+  additionalProperties: false,
+};
+
+const SYSTEM = `You label payee names from an Indian bank statement.
+
+You are given only names, with no amounts and no dates — that is
+deliberate, and you do not need them.
+
+For each name, pick the single best category from the allowed list.
+
+Notes on what these names look like:
+- They come from UPI transactions, so they are often shouty and
+  abbreviated: "SWIGGY LIMITED", "EURONET SERVICES IND".
+- A name that is a person rather than a business — two or three
+  words, no company suffix, sometimes with an honorific like MR, MS
+  or DR — is almost always "Transfers to people": money moved between
+  family or friends, not a purchase.
+- A small local eatery or shop, often the owner's name plus what they
+  sell, is usually "Food & dining".
+- Pay-later and EMI services are "Credit & loans", not shopping — the
+  shopping happened somewhere else.
+- Some names come with context: the payment address the money was
+  collected at, and any note written on it. Trust that over the
+  company's usual line of business — "EURONET SERVICES IND" is an ATM
+  operator, but money collected at "GPAYRECHARGE2" was a phone
+  recharge, so it is "Bills & utilities".
+
+Set "sure" to false when the name genuinely could be several things —
+a bare personal name that might be a shop, an unfamiliar abbreviation,
+initials. Do not use false merely because you are being cautious: a
+name you recognise should be marked true.`;
+
+export async function POST(request: Request) {
+  if (!process.env.ANTHROPIC_API_KEY) {
+    return NextResponse.json(
+      { error: "Category lookup is not configured on this deployment." },
+      { status: 503 },
+    );
+  }
+
+  const visitor = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
+  if (overLimit(visitor)) {
+    return NextResponse.json(
+      {
+        error:
+          "That is a lot of lookups in an hour. Categories are the only part of this that costs anything, so they are capped. Everything else on the page keeps working.",
+      },
+      { status: 429 },
+    );
+  }
+
+  let body: unknown;
+  try {
+    body = await request.json();
+  } catch {
+    return NextResponse.json({ error: "Could not read that request." }, { status: 400 });
+  }
+
+  const { names, hints } = (body ?? {}) as { names?: unknown; hints?: unknown };
+
+  /*
+   * Validated rather than trusted. Nothing in the app sends anything
+   * but short name strings, so anything else arriving here is either
+   * a bug or someone poking at it — and either way it should not
+   * reach the model.
+   */
+  if (!Array.isArray(names) || names.length === 0) {
+    return NextResponse.json({ error: "No names to look up." }, { status: 400 });
+  }
+  if (names.length > MAX_NAMES) {
+    return NextResponse.json(
+      { error: `That is more than ${MAX_NAMES} unfamiliar payees, which is more than a statement should have.` },
+      { status: 400 },
+    );
+  }
+
+  const clean = names
+    .filter((n): n is string => typeof n === "string")
+    .map((n) => n.trim())
+    .filter((n) => n.length > 0 && n.length <= MAX_NAME_LENGTH);
+
+  if (!clean.length) {
+    return NextResponse.json({ error: "No usable names in that request." }, { status: 400 });
+  }
+
+  const context: Record<string, string> = {};
+  if (hints && typeof hints === "object") {
+    for (const [name, hint] of Object.entries(hints as Record<string, unknown>)) {
+      if (typeof hint === "string" && hint.length <= MAX_NAME_LENGTH && clean.includes(name)) {
+        context[name] = hint.trim();
+      }
+    }
+  }
+
+  try {
+    const client = new Anthropic();
+    const response = await client.messages.create({
+      model: "claude-opus-5",
+      max_tokens: 4000,
+      system: SYSTEM,
+      // Recall, not reasoning: the model either knows what Swiggy is
+      // or it does not, and thinking harder about it only costs more.
+      output_config: { effort: "low", format: { type: "json_schema", schema: SCHEMA } },
+      messages: [
+        {
+          role: "user",
+          content: `Categorise these payee names:\n\n${clean
+            .map((n) => (context[n] ? `${n} — context: "${context[n]}"` : n))
+            .join("\n")}`,
+        },
+      ],
+    });
+
+    const text = response.content.find((b) => b.type === "text");
+    const parsed = JSON.parse(text && "text" in text ? text.text : "{}");
+
+    const out: Record<string, { category: string; sure: boolean }> = {};
+    for (const m of parsed.merchants ?? []) {
+      if (m?.name && CATEGORIES.includes(m.category)) {
+        out[m.name] = { category: m.category, sure: m.sure !== false };
+      }
+    }
+
+    return NextResponse.json({ categories: out });
+  } catch (error) {
+    console.error("[categorise] failed:", error);
+    return NextResponse.json(
+      {
+        error:
+          "The category lookup failed. Every figure on the page is unaffected — those were counted here, not asked for.",
+      },
+      { status: 502 },
+    );
+  }
+}

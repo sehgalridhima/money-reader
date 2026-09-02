@@ -7,14 +7,35 @@ on.
 Runs entirely on your own machine. Nothing is uploaded, and the
 statement never leaves the folder you put it in.
 
-## Running it
+There are two ways to use it, sharing one set of logic.
+
+## The website
 
 ```bash
 npm install
-npm start
+npm run dev        # then open localhost:3000
 ```
 
-It looks for `./statement.pdf` (or pass a path: `npm start -- ~/Downloads/mine.pdf`).
+Drop a statement on the page and it reports back. **The file is never
+uploaded.** pdf.js runs in the browser and every sum here is plain
+arithmetic, so there is nothing the server needs to be given: the PDF,
+the password, the amounts and the account number stay in the tab.
+
+That is not a promise about how the server behaves — there is no
+upload endpoint at all. The only route in the whole app takes a list
+of payee names (see Categories below) and could not accept a
+statement if it wanted to.
+
+If you would rather judge it before trusting it with your own
+statement, the page has a made-up sample to try first.
+
+## The command line
+
+```bash
+npm run cli                          # reads ./statement.pdf
+npm run cli -- ~/Downloads/mine.pdf
+```
+
 If the PDF is password protected it asks, reads the password straight
 from the terminal without echoing it, and forgets it when the process
 exits. Nothing writes it to disk.
@@ -34,27 +55,37 @@ The one genuine judgement is *what kind of thing* a payee is. No
 amount of parsing tells you that SWIGGY LIMITED is food and LAWSIKHO
 is education, so that part — and only that part — goes to Claude.
 
-## What the model is sent
+## Categories: most of them never leave your browser
 
-Payee names, and the payment handle or note where one exists:
+Two rules run locally and between them answer most of a statement:
+
+1. **A list of common merchants** ships with the page — Swiggy, Amazon,
+   Airtel, Netflix, Blinkit and a couple of hundred others. Nobody
+   needs a model to be told what those are.
+2. **A name that is a person** — an honorific, or a recognised surname
+   in last position — is a transfer rather than a purchase.
+
+What is left is the unfamiliar tail: the local restaurant, the tuition
+centre, the name you do not recognise. On the sample statement that is
+one payee out of six.
+
+Only for those does anything leave the browser, and only after you
+press a button — the page shows you the exact names first:
 
 ```
-SWIGGY LIMITED — context: "SWIGGY1ONLINE.GPAY"
-EURONET SERVICES IND — context: "GPAYRECHARGE2"
+CHAIWALA CORNER — context: "PTMQR9"
 ```
 
-It is **not** sent amounts, dates, balances, your account number, your
-name, or how many times anything appeared. A statement of 20
-transactions sends about 15 short strings.
+Never amounts, dates, balances, your account number, your name, or how
+often anything appeared. Skipping it changes no figure on the page.
 
-That handle is worth passing: EURONET SERVICES IND is an ATM operator,
-but this payment was collected at `GPAYRECHARGE2`, so it was a phone
-recharge — and the category comes out as a bill rather than a cash
-withdrawal.
+The handle is worth passing: EURONET SERVICES IND is an ATM operator,
+but a payment collected at `GPAYRECHARGE2` was a phone recharge — and
+the category comes out as a bill rather than a cash withdrawal.
 
-Answers are cached in `categories.json`, so the second run of a month
-is free and a new month only asks about payees never seen before.
-Costs roughly ₹1.50 for a fresh statement.
+The command-line version caches answers in `categories.json`, so a
+second run is free. Roughly ₹1.50 for a statement of entirely
+unfamiliar payees, and usually far less.
 
 ## It checks itself before it says anything
 
@@ -103,16 +134,47 @@ with two or three months of statements.
 
 ## Files
 
+Shared by both the website and the command line:
+
 | | |
 |---|---|
-| `src/pdf.mjs` | PDF → rows of text, by position on the page |
-| `src/parse.mjs` | rows → transactions, plus the reconciliation check |
-| `src/merchant.mjs` | narration → who was paid |
-| `src/analyse.mjs` | all the arithmetic |
-| `src/categorise.mjs` | the only model call |
-| `report.mjs` | what you run |
-| `inspect.mjs` | dumps a statement's raw layout, for adding a new bank |
+| `src/lib/rows.mjs` | PDF → rows of text, by position on the page |
+| `src/lib/parse.mjs` | rows → transactions, plus the reconciliation check |
+| `src/lib/merchant.mjs` | narration → who was paid |
+| `src/lib/analyse.mjs` | all the arithmetic |
+| `src/lib/known-merchants.mjs` | the offline merchant list |
+| `src/lib/classify.mjs` | the two local rules |
+
+Website only:
+
+| | |
+|---|---|
+| `src/lib/pdf-browser.ts` | loads pdf.js in the tab — why nothing is uploaded |
+| `src/components/` | the page |
+| `src/app/api/categorise/` | the one endpoint, which only takes names |
+
+Command line only:
+
+| | |
+|---|---|
+| `src/pdf.mjs` | pdf.js for Node |
+| `src/ask.mjs` | the password prompt |
+| `src/categorise.mjs` | the model call, with an on-disk cache |
+| `report.mjs`, `inspect.mjs` | what you run |
 
 `statement.pdf`, `rows.txt`, `report.json`, `categories.json` and
 `.env.local` are all gitignored — none of your financial data is in
-the repository.
+the repository. `public/sample-statement.pdf` is committed on purpose
+and is entirely invented; `scripts/make-sample.mjs` regenerates it.
+
+## Tests
+
+`scripts/browser-test.mjs` drives the real page in a real browser
+against the sample and asserts the claim this project rests on: that
+nothing is POSTed before you consent, and that when you do consent the
+payload contains names and no money.
+
+```bash
+npm run dev                       # in one terminal
+node scripts/browser-test.mjs     # in another
+```
