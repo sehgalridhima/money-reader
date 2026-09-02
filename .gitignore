@@ -1,0 +1,7 @@
+node_modules
+*.pdf
+rows.txt
+report.json
+categories.json
+last-run.log
+.env*
