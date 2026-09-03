@@ -36,7 +36,15 @@ const MAX_NAME_LENGTH = 60;
  * exists to avoid.
  */
 const WINDOW_MS = 60 * 60 * 1000;
-const PER_VISITOR = 12;
+
+/*
+ * Five, because a statement needs exactly one. Somebody reading a few
+ * months in one sitting is the realistic maximum, and anything past
+ * that is a loop rather than a person. Set against a bill of about
+ * Rs 1.15 a call, the difference between this and a laxer number is
+ * the difference between a nuisance and a bad afternoon.
+ */
+const PER_VISITOR = 5;
 const visits = new Map<string, number[]>();
 
 function overLimit(key: string): boolean {
@@ -111,7 +119,7 @@ export async function POST(request: Request) {
     return NextResponse.json(
       {
         error:
-          "That is a lot of lookups in an hour. Categories are the only part of this that costs anything, so they are capped. Everything else on the page keeps working.",
+          "That is five category lookups this hour, which is the cap. A statement only needs one, and this is the single part of the page that costs real money — it runs on one person's API credit. Everything else keeps working: reading a statement and every figure in the report never touches this.",
       },
       { status: 429 },
     );

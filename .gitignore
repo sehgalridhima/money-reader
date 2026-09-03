@@ -12,3 +12,4 @@ last-run.log
 
 # The sample is synthetic and deliberately committed.
 !public/sample-statement.pdf
+.vercel
