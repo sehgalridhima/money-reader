@@ -39,15 +39,21 @@ export default function Categories({ analysis: a }: { analysis: Analysis }) {
   const labels = { ...local, ...asked };
   const unknown = a.byMerchant.filter((g) => !labels[g.name]);
 
+  /*
+   * Each category carries its own payees with their amounts, so the
+   * separate "Where it went" card could go. It was showing the same
+   * spending a second time, one level down, which is a card's worth
+   * of page for no extra fact.
+   */
   const groups = useMemo(() => {
-    const totals = new Map<string, { total: number; names: string[]; unsure: boolean }>();
+    const totals = new Map<string, { total: number; payees: Group[]; unsure: boolean }>();
     for (const m of a.byMerchant) {
       const hit = labels[m.name];
       if (!hit) continue;
-      const g = totals.get(hit.category) ?? { total: 0, names: [], unsure: false };
+      const g = totals.get(hit.category) ?? { total: 0, payees: [], unsure: false };
       g.total += m.total;
-      g.names.push(m.name);
-      if (!hit.sure || hit.from === "model") g.unsure ||= !hit.sure;
+      g.payees.push(m);
+      if (!hit.sure) g.unsure = true;
       totals.set(hit.category, g);
     }
     return [...totals.entries()].sort((x, y) => y[1].total - x[1].total);
@@ -90,19 +96,40 @@ export default function Categories({ analysis: a }: { analysis: Analysis }) {
         <ul className="mt-3 divide-y divide-border">
           {groups.map(([name, g]) => (
             <li key={name} className="py-2.5 first:pt-0">
-              <div className="flex items-baseline gap-3">
-                <span className="min-w-0 flex-1">
-                  {name}
-                  {g.unsure && <span className="ml-1 text-muted">*</span>}
-                </span>
-                <span className="tabular text-sm text-muted">
-                  {Math.round((g.total / a.moneyOut) * 100)}%
-                </span>
-                <span className="tabular w-24 text-right font-medium text-spend">
-                  {formatExact(g.total)}
-                </span>
-              </div>
-              <p className="mt-0.5 truncate text-xs text-muted">{g.names.join(", ")}</p>
+              <details className="group">
+                <summary className="flex cursor-pointer items-baseline gap-3 list-none">
+                  <span className="min-w-0 flex-1">
+                    {/* A caret, so it is visible that these open. The
+                        first version put a bare payee count here, which
+                        read as a stray number rather than an affordance. */}
+                    <span className="mr-1.5 inline-block text-xs text-muted transition-transform group-open:rotate-90">
+                      ›
+                    </span>
+                    {name}
+                    {g.unsure && <span className="ml-1 text-muted">*</span>}
+                    {g.payees.length > 1 && (
+                      <span className="ml-1.5 text-xs text-muted">
+                        {g.payees.length} payees
+                      </span>
+                    )}
+                  </span>
+                  <span className="tabular text-sm text-muted">
+                    {Math.round((g.total / a.moneyOut) * 100)}%
+                  </span>
+                  <span className="tabular w-24 text-right font-medium text-spend">
+                    {formatExact(g.total)}
+                  </span>
+                </summary>
+                <ul className="mt-1.5 space-y-1 pl-3">
+                  {g.payees.map((p) => (
+                    <li key={p.key} className="flex items-baseline gap-3 text-sm text-muted">
+                      <span className="min-w-0 flex-1 truncate">{p.name}</span>
+                      {p.count > 1 && <span className="text-xs">×{p.count}</span>}
+                      <span className="tabular w-24 text-right">{formatExact(p.total)}</span>
+                    </li>
+                  ))}
+                </ul>
+              </details>
             </li>
           ))}
         </ul>
@@ -110,40 +137,37 @@ export default function Categories({ analysis: a }: { analysis: Analysis }) {
 
       {unknown.length > 0 && (
         <div className="mt-4 rounded-xl border border-border bg-page p-4">
-          <p className="text-sm leading-relaxed">
+          <p className="text-sm">
             <strong className="font-medium">
               {unknown.length} payee{unknown.length === 1 ? "" : "s"}
             </strong>{" "}
-            ({formatExact(unknownTotal)}) {unknown.length === 1 ? "is" : "are"} not in the
-            built-in list. Naming {unknown.length === 1 ? "it" : "them"} needs a judgement, so
-            it is the one thing here that would leave your browser.
+            ({formatExact(unknownTotal)}) {unknown.length === 1 ? "isn’t" : "aren’t"} in the
+            built-in list. Naming {unknown.length === 1 ? "it" : "them"} means sending{" "}
+            {unknown.length === 1 ? "the name" : "the names"} — nothing else.
           </p>
 
-          <p className="mt-2 text-sm leading-relaxed text-muted">
-            Only these names would be sent — no amounts, no dates, no balances, nothing
-            that says whose statement it is.{" "}
+          <div className="mt-3 flex flex-wrap items-center gap-3">
+            {state !== "failed" && (
+              <button
+                onClick={() => void lookUp()}
+                disabled={state === "asking"}
+                className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-40"
+              >
+                {state === "asking" ? "Looking up…" : "Name these for me"}
+              </button>
+            )}
             <button
               onClick={() => setShowNames(!showNames)}
-              className="underline underline-offset-4 hover:text-ink"
+              className="text-sm text-muted underline underline-offset-4 hover:text-ink"
             >
-              {showNames ? "Hide" : "Show me exactly what would be sent"}
+              {showNames ? "Hide" : "See what gets sent"}
             </button>
-          </p>
+          </div>
 
           {showNames && (
-            <pre className="mt-2 overflow-x-auto rounded-lg bg-surface-2 p-3 text-xs leading-relaxed">
+            <pre className="mt-3 overflow-x-auto rounded-lg bg-surface-2 p-3 text-xs">
               {unknown.map((g) => nameLine(g)).join("\n")}
             </pre>
-          )}
-
-          {state !== "failed" && (
-            <button
-              onClick={() => void lookUp()}
-              disabled={state === "asking"}
-              className="mt-3 rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-40"
-            >
-              {state === "asking" ? "Looking up…" : "Name these for me"}
-            </button>
           )}
 
           {error && (
@@ -151,18 +175,13 @@ export default function Categories({ analysis: a }: { analysis: Analysis }) {
               {error}
             </p>
           )}
-
-          <p className="mt-3 text-xs leading-relaxed text-muted">
-            Skipping this changes nothing else. Every figure on this page was counted in
-            your browser and does not depend on it.
-          </p>
         </div>
       )}
 
       {groups.some(([, g]) => g.unsure) && (
-        <p className="mt-3 text-xs leading-relaxed text-muted">
-          * contains a payee whose category is a guess — a name that could be a person, a
-          shop or a service. Unlike every figure on this page, that one is an opinion.
+        <p className="mt-3 text-xs text-muted">
+          * this one is a guess. Every figure on the page is counted; only the labels are
+          opinions.
         </p>
       )}
     </section>

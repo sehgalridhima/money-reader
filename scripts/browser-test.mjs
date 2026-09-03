@@ -8,7 +8,7 @@
 
 import { chromium } from "playwright";
 
-const PDF = process.env.PDF ?? "./fixture.pdf";
+const PDF = process.env.PDF ?? "./public/sample-statement.pdf";
 const PASSWORD = process.env.STMT_PASSWORD;
 
 const browser = await chromium.launch();
@@ -35,7 +35,7 @@ await page.goto("http://localhost:3000", { waitUntil: "networkidle" });
 await page.setInputFiles('input[type="file"]', PDF);
 
 const locked = page.locator('input[type="password"]');
-const report = page.locator("text=they agree exactly");
+const report = page.locator("text=matches the bank");
 const failed = page.locator("text=did not add up");
 
 await Promise.race([
@@ -65,8 +65,8 @@ for (const [label, re] of [
   ["money out", /2,889\.50/],
   ["money in", /2,412\.50/],
   ["a category filled in with no network call", /Subscriptions|Groceries|Shopping/],
-  ["only one payee is unfamiliar — the rest were named locally", /1 payee \(₹60\.00\) is not in the built-in list/],
-  ["unfamiliar payees offered rather than sent", /not in the built-in list/],
+  ["only one payee is unfamiliar — the rest were named locally", /1 payee \(₹60\.00\) isn’t in the built-in list/],
+  ["unfamiliar payees offered rather than sent", /in the built-in list/],
   ["consent button present", /Name these for me/],
 ]) {
   check(label, re.test(text));

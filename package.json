@@ -8,7 +8,8 @@
     "dev": "next dev",
     "build": "next build",
     "web": "next start",
-    "cli": "node --env-file-if-exists=.env.local report.mjs"
+    "cli": "node --env-file-if-exists=.env.local report.mjs",
+    "test:browser": "node scripts/browser-test.mjs"
   },
   "keywords": [],
   "author": "",
@@ -26,6 +27,7 @@
     "@types/node": "^26.4.1",
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.5",
+    "playwright": "^1.62.1",
     "tailwindcss": "^4.3.3",
     "typescript": "^7.0.2"
   }

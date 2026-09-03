@@ -100,7 +100,12 @@ export default function Report({
     <div className="flex flex-col gap-5">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <p className="text-sm text-muted">
-          {day(a.period.from)} to {day(a.period.to)} · {a.period.days} days
+          {day(a.period.from)} to {day(a.period.to)}
+          {/* The reconciliation result belongs here, in one clause, not
+              in its own banner. It is a fact about the report, not an
+              announcement — and a whole box saying "this is correct"
+              protests slightly too much. */}
+          <span className="text-accent"> · matches the bank&rsquo;s own totals</span>
         </p>
         <button
           onClick={onReset}
@@ -110,13 +115,17 @@ export default function Report({
         </button>
       </div>
 
-      <p className="rounded-xl border border-accent/30 bg-accent-soft px-4 py-3 text-sm leading-relaxed">
-        Checked against the totals the bank printed on the statement: they agree exactly.
-        Every figure below was counted, not estimated.
-      </p>
-
       <section className="grid gap-3 sm:grid-cols-3">
-        <Tile label="Money in" value={a.moneyIn} tone="earn" note={`${parsed.totals.creditCount} credits`} />
+        <Tile
+          label="Money in"
+          value={a.moneyIn}
+          tone="earn"
+          note={
+            a.refundTotal > 0
+              ? `${formatExact(a.realIncome)} earned · ${formatExact(a.refundTotal)} refunded`
+              : `${parsed.totals.creditCount} credits`
+          }
+        />
         <Tile label="Money out" value={a.moneyOut} tone="spend" note={`${parsed.totals.debitCount} debits`} />
         <Tile
           label={a.net >= 0 ? "Kept" : "Overspent"}
@@ -125,14 +134,6 @@ export default function Report({
           note={parsed.summary ? `closing ${formatExact(parsed.summary.closing)}` : undefined}
         />
       </section>
-
-      {a.refundTotal > 0 && (
-        <p className="text-sm leading-relaxed text-muted">
-          Of the money in, <strong className="text-ink">{formatExact(a.realIncome)}</strong> was
-          income and <strong className="text-ink">{formatExact(a.refundTotal)}</strong> was refunds
-          — money coming back, not money earned.
-        </p>
-      )}
 
       <Categories analysis={a} />
 
@@ -156,31 +157,13 @@ export default function Report({
             ))}
           </ul>
           {a.recurring.some((r) => !r.certain) && (
-            <p className="mt-3 text-xs leading-relaxed text-muted">
-              Only the AUTOPAY ones are certain — the bank records those as standing
-              instructions. The rest are a guess from how often and how evenly they
-              recurred, so check before cancelling anything.
+            <p className="mt-3 text-xs text-muted">
+              Only AUTOPAY is certain — the bank records those. The rest are inferred, so
+              check before cancelling.
             </p>
           )}
         </Card>
       )}
-
-      <Card title="Where it went">
-        <ul className="divide-y divide-border">
-          {a.byMerchant.slice(0, 10).map((m) => (
-            <li key={m.key} className="flex items-baseline gap-3 py-2 first:pt-0 last:pb-0">
-              <span className="min-w-0 flex-1 truncate">{m.name}</span>
-              {m.count > 1 && <span className="text-xs text-muted">×{m.count}</span>}
-              <span className="tabular text-sm text-muted">
-                {Math.round((m.total / a.moneyOut) * 100)}%
-              </span>
-              <span className="tabular w-24 text-right font-medium text-spend">
-                {formatExact(m.total)}
-              </span>
-            </li>
-          ))}
-        </ul>
-      </Card>
 
       {a.incomeBySource.length > 0 && (
         <Card title="Where it came from">

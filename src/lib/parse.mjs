@@ -94,6 +94,29 @@ function cellAt(row, x, tolerance = 40) {
 }
 
 /**
+ * Everything printed in one column, not just the nearest fragment.
+ *
+ * Whether a line of text arrives as one cell or several is the PDF
+ * writer's choice, and banks differ. Taking only the nearest cell —
+ * which is what this did first — turned "MR ARJUN MALHOTRA" into
+ * "MR" and "CHAIWALA CORNER" into "CHAIWALA" on a statement whose
+ * writer emitted each word separately. Both were wrong in a way that
+ * still looked like a name, which is the kind of wrong nobody checks.
+ *
+ * So: take every cell that falls between this column and the next,
+ * left to right. Where the writer emitted one cell, that is exactly
+ * what it was before.
+ */
+function cellsIn(row, from, until, tolerance = 20) {
+  return row.cells
+    .filter((c) => c.x >= from - tolerance && (until == null || c.x < until - tolerance))
+    .map((c) => c.text.trim())
+    .filter(Boolean)
+    .join(" ")
+    .trim();
+}
+
+/**
  * One page of transactions.
  *
  * A transaction is anchored by its date. Its narration is longer than
@@ -140,8 +163,17 @@ function parsePage(rows) {
 
   const pieces = new Map(anchors.map((a) => [a.y, []]));
 
+  /*
+   * The narration runs from its own column up to whichever column
+   * comes next — the reference number on most statements, or the
+   * amounts where there is none.
+   */
+  const afterNarration = [columns.ref, columns.valueDate, columns.debit]
+    .filter((x) => x != null && x > columns.narration)
+    .sort((a, b) => a - b)[0];
+
   for (const row of body) {
-    const text = cellAt(row, columns.narration, 60);
+    const text = cellsIn(row, columns.narration, afterNarration);
     if (!text) continue;
 
     // Whichever anchor this line is printed nearest to.
