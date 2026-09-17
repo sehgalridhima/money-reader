@@ -87,6 +87,32 @@ The command-line version caches answers in `categories.json`, so a
 second run is free. Roughly ₹1.50 for a statement of entirely
 unfamiliar payees, and usually far less.
 
+### What stops it costing more than that
+
+Two limits, guarding different things:
+
+- **Five lookups per visitor per hour.** A `Map` in module scope, so
+  each serverless instance keeps its own and someone determined gets
+  more. It stops one person hammering the button, which is all it was
+  ever able to do.
+- **Twenty a day for the whole site**, in Postgres, where the
+  increment and the check happen in one atomic statement
+  (`src/lib/budget.ts`, `supabase/migrations/0001_categorise_budget.sql`).
+  The limit lives in the migration rather than the app, because the
+  key the app holds is public and a limit you can pass as an argument
+  is not a limit. Without `SUPABASE_URL` and `SUPABASE_PUBLISHABLE_KEY`
+  set, this counts in memory instead and says so in the logs.
+
+That daily counter holds one number per day and nothing else — no
+payee, no amount, no identifier for whoever asked. The promise that a
+statement is read in the browser and never uploaded is unaffected, and
+the note at the top of `src/lib/budget.ts` says why in full.
+
+Under both, unchanged: the Anthropic balance with auto-reload off.
+Spending cannot exceed what has been paid for, so the worst case is
+not a bill — it is this site going quiet, and Eloquence and Lead Scout
+with it, because all three spend the same balance.
+
 ## It checks itself before it says anything
 
 HDFC prints its own totals at the foot of the statement — opening

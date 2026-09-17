@@ -15,6 +15,7 @@
 import { NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
 import { CATEGORIES } from "@/lib/known-merchants.mjs";
+import { claimCategorise } from "@/lib/budget";
 
 /** A statement with more unfamiliar payees than this is unusual. */
 const MAX_NAMES = 40;
@@ -26,14 +27,20 @@ const MAX_NAME_LENGTH = 60;
  * Rate limiting, and an honest description of what it is worth. This
  * is a Map in module scope, so each serverless instance keeps its
  * own and the real ceiling is however many instances exist — a brake
- * rather than a wall. It is here to stop one person looping, not to
- * be the thing that protects the account.
+ * rather than a wall. It is here to stop one person looping, and that
+ * is all it was ever able to do.
  *
- * The actual wall is the Anthropic balance with auto-reload off:
- * spending cannot exceed what has been paid for. A limit that can be
- * bypassed by opening a second tab is not a spending control, and
- * calling it one would be the kind of quiet inaccuracy this project
- * exists to avoid.
+ * The wall it could not be is now underneath it: a site-wide daily
+ * budget in Postgres, where the increment and the check happen in one
+ * atomic statement (src/lib/budget.ts). The two guard different
+ * things and both are worth having — this one stops one visitor
+ * hammering the button, that one stops a busy afternoon spending a
+ * month of credit.
+ *
+ * Under both of those, unchanged: the Anthropic balance with
+ * auto-reload off. Spending cannot exceed what has been paid for, so
+ * the worst case here has never been a bill — it is this site, and
+ * Eloquence and Lead Scout alongside it, going quiet until a top-up.
  */
 const WINDOW_MS = 60 * 60 * 1000;
 
@@ -166,6 +173,26 @@ export async function POST(request: Request) {
         context[name] = hint.trim();
       }
     }
+  }
+
+  /*
+   * The site-wide budget, claimed after the per-visitor check so that
+   * someone looping spends their own allowance rather than the day's,
+   * and after the request has been validated so that a malformed one
+   * cannot drain the day without ever reaching the model.
+   *
+   * Not refunded if the call then fails — a failed call still costs
+   * tokens often enough that pretending otherwise would make the
+   * count a lie.
+   */
+  if (!(await claimCategorise())) {
+    return NextResponse.json(
+      {
+        error:
+          "This site has used its naming budget for today. It resets at midnight IST. Nothing else is affected: the report you are looking at was computed in your browser, and every figure in it is already final — the only thing missing is a friendlier label on payees the built-in list did not recognise.",
+      },
+      { status: 429 },
+    );
   }
 
   try {
